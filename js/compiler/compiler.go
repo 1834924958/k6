@@ -167,8 +167,10 @@ func (c *Compiler) compileImpl(
 			}
 			var err error
 			srcmap, err = c.COpts.SourceMapLoader(path)
-			if err == nil && !main {
-				srcmap, err = increaseMappingsByOne(srcmap)
+			if err == nil {
+				if !main {
+					srcmap, err = increaseMappingsByOne(srcmap)
+				}
 			} else {
 				couldntLoadSourceMap = true
 			}
