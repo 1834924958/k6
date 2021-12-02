@@ -310,8 +310,23 @@ func (i *InitContext) Open(ctx context.Context, filename string, args ...string)
 		return nil, err
 	}
 
-	if len(args) > 0 && args[0] == "b" {
-		ab := i.runtime.NewArrayBuffer(data)
+	if len(args) > 0 && contains(args, "b") {
+		dataModule, exists := getInternalJSModules()["k6/data"]
+		if !exists {
+			return nil, fmt.Errorf(
+				"an internal error occured; " +
+					"reason: unable to load the data module. " +
+					"It looks like you've found a bug, please consider " +
+					"filling an issue on Github: https://github.com/grafana/k6/issues/new/choose",
+			)
+		}
+
+		var ab goja.Value
+		if contains(args, "r") {
+			ab = i.runtime.ToValue(dataModule.NewImmutableArrayBuffer(data))
+		} else {
+			return i.runtime.ToValue(i.runtime.NewArrayBuffer(data)), nil
+		}
 		return i.runtime.ToValue(&ab), nil
 	}
 	return i.runtime.ToValue(string(data)), nil
@@ -343,4 +358,14 @@ func getJSModules() map[string]interface{} {
 	}
 
 	return result
+}
+
+func contains(slice []string, str string) bool {
+	for _, v := range slice {
+		if v == str {
+			return true
+		}
+	}
+
+	return false
 }
