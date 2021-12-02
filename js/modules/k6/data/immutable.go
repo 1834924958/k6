@@ -7,35 +7,33 @@ import (
 	"github.com/dop251/goja"
 )
 
-type wrapper interface {
-	wrap(rt *goja.Runtime) goja.Value
-}
-
-type immutableArrayBuffer struct {
+type SharedArrayBuffer struct {
 	arr []byte
 }
 
-func (iab immutableArrayBuffer) wrap(rt *goja.Runtime) goja.Value {
-	return rt.NewDynamicArray(wrappedImmutableBufferArray{
-		immutableArrayBuffer: iab,
-		rt:                   rt,
-	})
+func (sab SharedArrayBuffer) Wrap(rt *goja.Runtime) goja.ArrayBuffer {
+	// return rt.NewArrayBuffer(sab.arr)
+	// return rt.NewDynamicArray(WrappedSharedArrayBuffer{
+	// 	SharedArrayBuffer: sab,
+	// 	rt:                rt,
+	// })
+	return rt.NewArrayBuffer(sab.arr)
 }
 
-type wrappedImmutableBufferArray struct {
-	immutableArrayBuffer
+type WrappedSharedArrayBuffer struct {
+	SharedArrayBuffer
 
 	rt *goja.Runtime
 }
 
 // Len returns the current immutable array buffer length.
-func (w wrappedImmutableBufferArray) Len() int {
+func (w WrappedSharedArrayBuffer) Len() int {
 	return len(w.arr)
 }
 
 // Get an item at index idx.
 // // Note that idx may be any integer, negative or beyond the current length.
-func (w wrappedImmutableBufferArray) Get(index int) goja.Value {
+func (w WrappedSharedArrayBuffer) Get(index int) goja.Value {
 	if index < 0 || index >= len(w.arr) {
 		return goja.Undefined()
 	}
@@ -49,12 +47,16 @@ func (w wrappedImmutableBufferArray) Get(index int) goja.Value {
 // // Note that idx may be any integer, negative or beyond the current length.
 // // The expected behaviour when it's beyond length is that the array's length is increased to accommodate
 // // the item. All elements in the 'new' section of the array should be zeroed.
-func (w wrappedImmutableBufferArray) Set(idx int, val goja.Value) bool {
+func (w WrappedSharedArrayBuffer) Set(idx int, val goja.Value) bool {
 	panic(w.rt.NewTypeError("SharedArray is immutable")) // this is specifically a type error
 }
 
 // // SetLen is called when the array's 'length' property is changed. If the length is increased all elements in the
 // // 'new' section of the array should be zeroed.
-func (w wrappedImmutableBufferArray) SetLen(l int) bool {
+func (w WrappedSharedArrayBuffer) SetLen(l int) bool {
 	panic(w.rt.NewTypeError("SharedArray is immutable")) // this is specifically a type error
+}
+
+func (w WrappedSharedArrayBuffer) Bytes() []byte {
+	return w.arr
 }

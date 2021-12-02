@@ -305,31 +305,46 @@ func (i *InitContext) Open(ctx context.Context, filename string, args ...string)
 	} else if isDir {
 		return nil, fmt.Errorf("open() can't be used with directories, path: %q", filename)
 	}
-	data, err := afero.ReadFile(fs, filename)
+	fileData, err := afero.ReadFile(fs, filename)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(args) > 0 && contains(args, "b") {
-		dataModule, exists := getInternalJSModules()["k6/data"]
+	if len(args) > 0 && contains(args[0], 'b') {
+		dataModule, exists := i.modules["k6/data"]
 		if !exists {
 			return nil, fmt.Errorf(
-				"an internal error occured; " +
-					"reason: unable to load the data module. " +
+				"an internal error occurred; " +
+					"reason: the data module is not loaded in the init context. " +
 					"It looks like you've found a bug, please consider " +
 					"filling an issue on Github: https://github.com/grafana/k6/issues/new/choose",
 			)
 		}
 
-		var ab goja.Value
-		if contains(args, "r") {
-			ab = i.runtime.ToValue(dataModule.NewImmutableArrayBuffer(data))
+		if contains(args[0], 'r') {
+			// TODO: Return an ImmutableArrayBuffer shared between all VUs (by getting one from the data module, and returning it?)
+			// immutableArrayBuffer := dataModule.(*data.RootModule).GetOrCreateArrayBuffer(filename, fileData)
+			// ab = immutableArrayBuffer.Wrap(i.runtime)
+			// ab = i.runtime.ToValue(i.runtime.NewArrayBuffer(fileData))
+
+			sharedArrayBuffer := dataModule.(*data.RootModule).GetOrCreateSharedArrayBuffer(filename, fileData)
+			i.sharedArrayBuffers.GetOr...
+			ab := sharedArrayBuffer.Wrap(i.runtime) // Where evil happens
+			return i.runtime.ToValue(&ab), nil
+
+			// type teststruct struct {
+			// 	Arr []byte
+			// }
+			// t := teststruct{Arr: []byte("123")}
+			// return i.runtime.ToValue(t), nil
 		} else {
-			return i.runtime.ToValue(i.runtime.NewArrayBuffer(data)), nil
+			ab := i.runtime.NewArrayBuffer(fileData)
+			return i.runtime.ToValue(&ab), nil
 		}
-		return i.runtime.ToValue(&ab), nil
+
+		// return i.runtime.ToValue(&ab), nil
 	}
-	return i.runtime.ToValue(string(data)), nil
+	return i.runtime.ToValue(string(fileData)), nil
 }
 
 func getInternalJSModules() map[string]interface{} {
@@ -360,9 +375,9 @@ func getJSModules() map[string]interface{} {
 	return result
 }
 
-func contains(slice []string, str string) bool {
-	for _, v := range slice {
-		if v == str {
+func contains(str string, c rune) bool {
+	for _, v := range str {
+		if v == c {
 			return true
 		}
 	}

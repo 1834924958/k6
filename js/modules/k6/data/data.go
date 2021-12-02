@@ -35,14 +35,14 @@ type (
 	// instances for each VU.
 	RootModule struct {
 		shared    sharedArrays
-		immutable immutableArrays
+		immutable sharedArrayBuffers
 	}
 
 	// Data represents an instance of the data module.
 	Data struct {
 		vu        modules.VU
 		shared    *sharedArrays
-		immutable *immutableArrays
+		immutable *sharedArrayBuffers
 	}
 
 	sharedArrays struct {
@@ -50,8 +50,8 @@ type (
 		mu   sync.RWMutex
 	}
 
-	immutableArrays struct {
-		data map[string]immutableArrayBuffer
+	sharedArrayBuffers struct {
+		data map[string]SharedArrayBuffer
 		mu   sync.RWMutex
 	}
 )
@@ -67,8 +67,8 @@ func New() *RootModule {
 		shared: sharedArrays{
 			data: make(map[string]sharedArray),
 		},
-		immutable: immutableArrays{
-			data: make(map[string]immutableArrayBuffer),
+		immutable: sharedArrayBuffers{
+			data: make(map[string]SharedArrayBuffer),
 		},
 	}
 }
@@ -83,12 +83,17 @@ func (rm *RootModule) NewModuleInstance(vu modules.VU) modules.Instance {
 	}
 }
 
+// NewImmutableArrayBuffer
+func (rm *RootModule) GetOrCreateSharedArrayBuffer(filename string, data []byte) SharedArrayBuffer {
+	return rm.immutable.get(filename, data)
+}
+
 // Exports returns the exports of the data module.
 func (d *Data) Exports() modules.Exports {
 	return modules.Exports{
 		Named: map[string]interface{}{
-			"SharedArray":          d.sharedArray,
-			"ImmutableArrayBuffer": d.immutableArray,
+			"SharedArray":       d.sharedArray,
+			"SharedArrayBuffer": d.sharedArrayBuffer,
 		},
 	}
 }
@@ -157,28 +162,28 @@ func getShareArrayFromCall(rt *goja.Runtime, call goja.Callable) sharedArray {
 	return sharedArray{arr: arr}
 }
 
-func (d *Data) immutableArray(constructor goja.ConstructorCall) *goja.Object {
-	runtime := d.vu.Runtime()
+func (d *Data) sharedArrayBuffer(constructor goja.ConstructorCall) goja.Value {
+	// runtime := d.vu.Runtime()
 
-	if d.vu.State() != nil {
-		common.Throw(runtime, errors.New("new ImmutableArrayBuffer must be called in the init context"))
-	}
+	// if d.vu.State() != nil {
+	// 	common.Throw(runtime, errors.New("new ImmutableArrayBuffer must be called in the init context"))
+	// }
 
-	filename := constructor.Argument(0).String()
-	if filename == "" {
-		common.Throw(runtime, errors.New("empty filename provided to ImmutableArrayBuffer's constructor"))
-	}
+	// filename := constructor.Argument(0).String()
+	// if filename == "" {
+	// 	common.Throw(runtime, errors.New("empty filename provided to ImmutableArrayBuffer's constructor"))
+	// }
 
-	size := constructor.Argument(1).ToInteger()
-	if size < 0 {
-		common.Throw(runtime, errors.New("negative size provided to ImmutableArrayBuffer's constructor"))
-	}
+	// // TODO: somehow acquire data? It looks like having a constructor just doesn't make sense.
 
-	array := d.immutable.get(filename, uint(size))
-	return array.wrap(runtime).ToObject(runtime)
+	// // FIXME: nil is a leftover, some data should actually make its way here? See previous TODO.
+	// array := d.immutable.get(filename, nil)
+	// return array.Wrap(runtime).ToObject(runtime)
+	// return array.Wrap(runtime).ToObject(runtime)
+	return nil
 }
 
-func (i *immutableArrays) get(filename string, size uint) immutableArrayBuffer {
+func (i *sharedArrayBuffers) get(filename string, data []byte) SharedArrayBuffer {
 	i.mu.RLock()
 	array, exists := i.data[filename]
 	i.mu.RUnlock()
@@ -196,7 +201,8 @@ func (i *immutableArrays) get(filename string, size uint) immutableArrayBuffer {
 		// in the meantime).
 		array, exists = i.data[filename]
 		if !exists {
-			i.data[filename] = immutableArrayBuffer{arr: make([]byte, size)}
+			array = SharedArrayBuffer{arr: data}
+			i.data[filename] = array
 		}
 	}
 
