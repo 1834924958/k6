@@ -34,17 +34,24 @@ type (
 	// RootModule is the global module instance that will create module
 	// instances for each VU.
 	RootModule struct {
-		shared sharedArrays
+		shared    sharedArrays
+		immutable immutableArrays
 	}
 
 	// Data represents an instance of the data module.
 	Data struct {
-		vu     modules.VU
-		shared *sharedArrays
+		vu        modules.VU
+		shared    *sharedArrays
+		immutable *immutableArrays
 	}
 
 	sharedArrays struct {
 		data map[string]sharedArray
+		mu   sync.RWMutex
+	}
+
+	immutableArrays struct {
+		data map[string]immutableArrayBuffer
 		mu   sync.RWMutex
 	}
 )
@@ -60,6 +67,9 @@ func New() *RootModule {
 		shared: sharedArrays{
 			data: make(map[string]sharedArray),
 		},
+		immutable: immutableArrays{
+			data: make(map[string]immutableArrayBuffer),
+		},
 	}
 }
 
@@ -67,8 +77,9 @@ func New() *RootModule {
 // a new instance for each VU.
 func (rm *RootModule) NewModuleInstance(vu modules.VU) modules.Instance {
 	return &Data{
-		vu:     vu,
-		shared: &rm.shared,
+		vu:        vu,
+		shared:    &rm.shared,
+		immutable: &rm.immutable,
 	}
 }
 
@@ -76,7 +87,8 @@ func (rm *RootModule) NewModuleInstance(vu modules.VU) modules.Instance {
 func (d *Data) Exports() modules.Exports {
 	return modules.Exports{
 		Named: map[string]interface{}{
-			"SharedArray": d.sharedArray,
+			"SharedArray":          d.sharedArray,
+			"ImmutableArrayBuffer": d.immutableArray,
 		},
 	}
 }
@@ -143,4 +155,50 @@ func getShareArrayFromCall(rt *goja.Runtime, call goja.Callable) sharedArray {
 	}
 
 	return sharedArray{arr: arr}
+}
+
+func (d *Data) immutableArray(constructor goja.ConstructorCall) *goja.Object {
+	runtime := d.vu.Runtime()
+
+	if d.vu.State() != nil {
+		common.Throw(runtime, errors.New("new ImmutableArrayBuffer must be called in the init context"))
+	}
+
+	filename := constructor.Argument(0).String()
+	if filename == "" {
+		common.Throw(runtime, errors.New("empty filename provided to ImmutableArrayBuffer's constructor"))
+	}
+
+	size := constructor.Argument(1).ToInteger()
+	if size < 0 {
+		common.Throw(runtime, errors.New("negative size provided to ImmutableArrayBuffer's constructor"))
+	}
+
+	array := d.immutable.get(filename, uint(size))
+	return array.wrap(runtime).ToObject(runtime)
+}
+
+func (i *immutableArrays) get(filename string, size uint) immutableArrayBuffer {
+	i.mu.RLock()
+	array, exists := i.data[filename]
+	i.mu.RUnlock()
+	if !exists {
+		// If the array was not found, we need to try and
+		// create it. Thus, we acquire a read/write lock,
+		// which will be released at the end of this if
+		// statement's scope.
+		i.mu.Lock()
+		defer i.mu.Unlock()
+
+		// To ensure atomicity of our operation, and as we have
+		// reacquired a lock on the data, we should double check
+		// the pre-existence of the array (it might have been created
+		// in the meantime).
+		array, exists = i.data[filename]
+		if !exists {
+			i.data[filename] = immutableArrayBuffer{arr: make([]byte, size)}
+		}
+	}
+
+	return array
 }
