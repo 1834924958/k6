@@ -23,6 +23,7 @@ package compiler
 import (
 	_ "embed" // we need this for embedding Babel
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -237,10 +238,23 @@ func increaseMappingsByOne(sourceMap []byte) ([]byte, error) {
 	if err = json.Unmarshal(sourceMap, &m); err != nil {
 		return nil, err
 	}
+	if mappings, ok := m["mappings"]; !ok {
+		// no mappings, no idea what this will do, but just return it as technically we can have sourcemap with sections
+		// TODO implement incrementing of `offset` in the sections?
+		// TODO (kind of alternatively) drop the newline in the "commonjs" wrapping and have only the first line wrong
+		// except everything being off by one
+		return sourceMap, nil
+	} else {
+		if str, ok := mappings.(string); ok {
+			// ';' is the separator between lines so just adding 1 will make all mappings be for the line after which they were
+			// originally
+			m["mappings"] = ";" + str
+		} else {
+			// we have mappings but it's not a string - this is some kind of erro
+			return nil, errors.New(`missing "mappings" in sourcemap`)
+		}
+	}
 
-	// ';' is the separator between lines so just adding 1 will make all mappings be for the line after which they were
-	// originally
-	m["mappings"] = ";" + m["mappings"].(string)
 	return json.Marshal(m)
 }
 
