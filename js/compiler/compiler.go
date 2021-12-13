@@ -113,7 +113,7 @@ func (c *Compiler) initializeBabel() error {
 }
 
 // Transform the given code into ES5
-func (c *Compiler) Transform(src, filename string, inputSrcMap []byte) (code string, srcmap []byte, err error) {
+func (c *Compiler) Transform(src, filename string, inputSrcMap []byte) (code string, srcMap []byte, err error) {
 	if c.babel == nil {
 		onceBabel.Do(func() {
 			globalBabel, err = newBabel()
@@ -124,7 +124,7 @@ func (c *Compiler) Transform(src, filename string, inputSrcMap []byte) (code str
 		return
 	}
 
-	code, srcmap, err = c.babel.transformImpl(c.logger, src, filename, c.COpts.SourceMapEnabled, inputSrcMap)
+	code, srcMap, err = c.babel.transformImpl(c.logger, src, filename, c.COpts.SourceMapEnabled, inputSrcMap)
 	// fmt.Println(code)
 	return
 }
@@ -145,13 +145,13 @@ func (c *Compiler) Compile(src, filename string, main bool, cOpts Options) (*goj
 
 //nolint:cyclop
 func (c *Compiler) compileImpl(
-	src, filename string, main bool, cOpts Options, srcmap []byte,
+	src, filename string, main bool, cOpts Options, srcMap []byte,
 ) (*goja.Program, string, error) {
 	code := src
 	if !main {
-		if len(srcmap) != 0 {
+		if len(srcMap) != 0 {
 			var err error
-			srcmap, err = increaseMappingsByOne(srcmap)
+			srcMap, err = increaseMappingsByOne(srcMap)
 			if err != nil {
 				return nil, "", err
 			}
@@ -164,18 +164,18 @@ func (c *Compiler) compileImpl(
 	if cOpts.SourceMapEnabled {
 		opts = parser.WithSourceMapLoader(func(path string) ([]byte, error) {
 			if path == sourceMapURLFromBabel {
-				return srcmap, nil
+				return srcMap, nil
 			}
 			var err error
-			srcmap, err = c.COpts.SourceMapLoader(path)
+			srcMap, err = c.COpts.SourceMapLoader(path)
 			if err == nil {
 				if !main {
-					srcmap, err = increaseMappingsByOne(srcmap)
+					srcMap, err = increaseMappingsByOne(srcMap)
 				}
 			} else {
 				couldntLoadSourceMap = true
 			}
-			return srcmap, err
+			return srcMap, err
 		})
 	}
 	ast, err := parser.ParseFile(nil, filename, code, 0, opts)
@@ -188,13 +188,13 @@ func (c *Compiler) compileImpl(
 	}
 	if err != nil {
 		if cOpts.CompatibilityMode == lib.CompatibilityModeExtended {
-			code, srcmap, err = c.Transform(src, filename, srcmap)
+			code, srcMap, err = c.Transform(src, filename, srcMap)
 			if err != nil {
 				return nil, code, err
 			}
 			// the compatibility mode "decreases" here as we shouldn't transform twice
 			cOpts.CompatibilityMode = lib.CompatibilityModeBase
-			return c.compileImpl(code, filename, main, cOpts, srcmap)
+			return c.compileImpl(code, filename, main, cOpts, srcMap)
 		}
 		return nil, code, err
 	}
