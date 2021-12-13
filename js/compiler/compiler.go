@@ -288,7 +288,7 @@ func (b *babel) transformImpl(
 	}
 
 	// this is to make goja try to load a sourcemap.
-	// it is specifically a special url as it should never leak outside of this code
+	// it is a special url as it should never leak outside of this code
 	// additionally the alternative support from babel is to embed *the whole* sourcemap at the end
 	code += "\n//# sourceMappingURL=" + sourceMapURLFromBabel
 	stringify, err := b.vm.RunString("(function(m) { return JSON.stringify(m)})")
