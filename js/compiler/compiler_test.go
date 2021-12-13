@@ -40,17 +40,11 @@ func TestTransform(t *testing.T) {
 		src, _, err := c.Transform("", "test.js", nil)
 		assert.NoError(t, err)
 		assert.Equal(t, `"use strict";`, src)
-		// assert.Equal(t, 3, srcmap.Version)
-		// assert.Equal(t, "test.js", srcmap.File)
-		// assert.Equal(t, "", srcmap.Mappings)
 	})
 	t.Run("double-arrow", func(t *testing.T) {
 		src, _, err := c.Transform("()=> true", "test.js", nil)
 		assert.NoError(t, err)
 		assert.Equal(t, `"use strict";() => true;`, src)
-		// assert.Equal(t, 3, srcmap.Version)
-		// assert.Equal(t, "test.js", srcmap.File)
-		// assert.Equal(t, "aAAA,qBAAK,IAAL", srcmap.Mappings)
 	})
 	t.Run("longer", func(t *testing.T) {
 		src, _, err := c.Transform(strings.Join([]string{
@@ -68,9 +62,6 @@ func TestTransform(t *testing.T) {
 			``,
 			`let res = add(1, 2);`,
 		}, "\n"), src)
-		// assert.Equal(t, 3, srcmap.Version)
-		// assert.Equal(t, "test.js", srcmap.File)
-		// assert.Equal(t, "aAAA,SAASA,GAAT,CAAaC,CAAb,EAAgBC,CAAhB,EAAmB;AACf,WAAOD,IAAIC,CAAX;AACH;;AAED,IAAIC,MAAMH,IAAI,CAAJ,EAAO,CAAP,CAAV", srcmap.Mappings)
 	})
 
 	t.Run("double-arrow with sourceMap", func(t *testing.T) {
@@ -81,9 +72,6 @@ func TestTransform(t *testing.T) {
 
 () => true;
 //# sourceMappingURL=k6://internal-should-not-leak/file.map`, src)
-		// assert.Equal(t, 3, srcmap.Version)
-		// assert.Equal(t, "test.js", srcmap.File)
-		// assert.Equal(t, "aAAA,qBAAK,IAAL", srcmap.Mappings)
 	})
 }
 
