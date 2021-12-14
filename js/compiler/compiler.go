@@ -24,6 +24,7 @@ import (
 	_ "embed" // we need this for embedding Babel
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -143,7 +144,22 @@ func (c *Compiler) Compile(src, filename string, main bool, cOpts Options) (*goj
 	return c.compileImpl(src, filename, main, cOpts, nil)
 }
 
-//nolint:cyclop
+func (c *Compiler) sourceMapLoader(srcMap []byte, main bool) func(path string) ([]byte, error) {
+	return func(path string) ([]byte, error) {
+		if path == sourceMapURLFromBabel {
+			return srcMap, nil
+		}
+		var err error
+		srcMap, err = c.COpts.SourceMapLoader(path)
+		if err == nil {
+			if !main {
+				srcMap, err = increaseMappingsByOne(srcMap)
+			}
+		}
+		return srcMap, err
+	}
+}
+
 func (c *Compiler) compileImpl(
 	src, filename string, main bool, cOpts Options, srcMap []byte,
 ) (*goja.Program, string, error) {
@@ -160,30 +176,15 @@ func (c *Compiler) compileImpl(
 		code = "(function(module, exports){\n" + code + "\n})\n"
 	}
 	opts := parser.WithDisableSourceMaps
-	var couldntLoadSourceMap bool
 	if cOpts.SourceMapEnabled {
-		opts = parser.WithSourceMapLoader(func(path string) ([]byte, error) {
-			if path == sourceMapURLFromBabel {
-				return srcMap, nil
-			}
-			var err error
-			srcMap, err = c.COpts.SourceMapLoader(path)
-			if err == nil {
-				if !main {
-					srcMap, err = increaseMappingsByOne(srcMap)
-				}
-			} else {
-				couldntLoadSourceMap = true
-			}
-			return srcMap, err
-		})
+		opts = parser.WithSourceMapLoader(c.sourceMapLoader(srcMap, main))
 	}
 	ast, err := parser.ParseFile(nil, filename, code, 0, opts)
-	// we probably don't want to abort scripts which have source maps but they can't be found,
-	// this also will be a breaking change, so if we couldn't we retry with it disabled
-	if couldntLoadSourceMap {
-		// original error is currently not very relevant
-		c.logger.Warnf("Couldn't load source map for %s", filename)
+
+	if err != nil && strings.Contains(err.Error(), "Could not load source map") {
+		// we probably don't want to abort scripts which have source maps but they can't be found,
+		// this also will be a breaking change, so if we couldn't we retry with it disabled
+		c.logger.WithError(err).Warnf("Couldn't load source map for %s", filename)
 		ast, err = parser.ParseFile(nil, filename, code, 0, parser.WithDisableSourceMaps)
 	}
 	if err != nil {
