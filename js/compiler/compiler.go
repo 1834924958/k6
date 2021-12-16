@@ -95,7 +95,7 @@ const sourceMapURLFromBabel = "k6://internal-should-not-leak/file.map"
 type Compiler struct {
 	logger logrus.FieldLogger
 	babel  *babel
-	COpts  Options // TODO change this, this is just way faster
+	COpts  Options
 }
 
 // New returns a new Compiler
@@ -131,12 +131,11 @@ func (c *Compiler) Transform(src, filename string, inputSrcMap []byte) (code str
 }
 
 // Options are options to the compiler
-type Options struct { // TODO maybe have the fields an exported and use the functional options pattern
+type Options struct {
 	CompatibilityMode lib.CompatibilityMode
 	SourceMapEnabled  bool
-	// TODO maybe move only this in the compiler itself and leave ht rest as parameters to the Compile
-	SourceMapLoader func(string) ([]byte, error)
-	Strict          bool
+	SourceMapLoader   func(string) ([]byte, error)
+	Strict            bool
 }
 
 // Compile the program in the given CompatibilityMode, wrapping it between pre and post code
@@ -144,19 +143,25 @@ func (c *Compiler) Compile(src, filename string, main bool, cOpts Options) (*goj
 	return c.compileImpl(src, filename, main, cOpts, nil)
 }
 
-func (c *Compiler) sourceMapLoader(srcMap []byte, main bool) func(path string) ([]byte, error) {
+// here we take the srcMap as pointer so we can change in case that we have an original srcMap that will be loaded, but
+// the code still needs to go through babel. In this way we can give the correct inputSourceMap to babel which hopefully
+// will generate a sourcemap which goes from the final source file lines to the original ones that were transpiled
+// outside of k6
+// TODO have some kind of "compilationContext" to save this instead and modify and move that
+// This won't be needed if we weren't going through babel so removing babel would kind of remove the need for that
+func (c *Compiler) sourceMapLoader(srcMap *[]byte, main bool) func(path string) ([]byte, error) {
 	return func(path string) ([]byte, error) {
 		if path == sourceMapURLFromBabel {
-			return srcMap, nil
+			return *srcMap, nil
 		}
 		var err error
-		srcMap, err = c.COpts.SourceMapLoader(path)
+		*srcMap, err = c.COpts.SourceMapLoader(path)
 		if err == nil {
 			if !main {
-				srcMap, err = increaseMappingsByOne(srcMap)
+				*srcMap, err = increaseMappingsByOne(*srcMap)
 			}
 		}
-		return srcMap, err
+		return *srcMap, err
 	}
 }
 
@@ -177,7 +182,7 @@ func (c *Compiler) compileImpl(
 	}
 	opts := parser.WithDisableSourceMaps
 	if cOpts.SourceMapEnabled {
-		opts = parser.WithSourceMapLoader(c.sourceMapLoader(srcMap, main))
+		opts = parser.WithSourceMapLoader(c.sourceMapLoader(&srcMap, main))
 	}
 	ast, err := parser.ParseFile(nil, filename, code, 0, opts)
 
