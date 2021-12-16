@@ -342,7 +342,7 @@ type fileDescriptorLookupKey struct {
 }
 
 func resolveServiceFileDescriptors(
-	mc reflectpb.ServerReflection_ServerReflectionInfoClient,
+	mc sendReceiver,
 	res *reflectpb.ListServiceResponse,
 ) (*descriptorpb.FileDescriptorSet, error) {
 	services := res.GetService()
@@ -384,10 +384,18 @@ func resolveServiceFileDescriptors(
 	return fdset, nil
 }
 
+// sendReceiver is a smaller interface for decoupling
+// from reflectpb.ServerReflection_ServerReflectionInfoClient
+// that has the dependency from grpc.ClientStream.
+type sendReceiver interface {
+	Send(*reflectpb.ServerReflectionRequest) error
+	Recv() (*reflectpb.ServerReflectionResponse, error)
+}
+
 // sendReceive sends a request to a reflection client and,
 // receives a response.
 func sendReceive(
-	client reflectpb.ServerReflection_ServerReflectionInfoClient,
+	client sendReceiver,
 	req *reflectpb.ServerReflectionRequest,
 ) (*reflectpb.ServerReflectionResponse, error) {
 	if err := client.Send(req); err != nil {
